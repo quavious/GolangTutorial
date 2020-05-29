@@ -1,8 +1,10 @@
 package main
 
 import (
+	"encoding/csv"
 	"log"
 	"net/http"
+	"os"
 	"std/fmt"
 	"strconv"
 	"strings"
@@ -88,6 +90,25 @@ func getPages() int {
 	return pages
 }
 
+func writeJobs(jobs []extractedJob) {
+	file, err := os.Create("jobs.csv")
+	checkErr(err)
+
+	w := csv.NewWriter(file)
+	defer w.Flush()
+
+	headers := []string{"ID", "Title", "Location", "Salary", "Summary"}
+
+	wErr := w.Write(headers)
+	checkErr(wErr)
+
+	for _, job := range jobs {
+		jobSlice := []string{"https://kr.indeed.com/viewjob?jk=" + job.id, job.title, job.location, job.salary, job.summary}
+		jwErr := w.Write(jobSlice)
+		checkErr(jwErr)
+	}
+}
+
 func main() {
 	var jobs []extractedJob
 	totalPages := getPages()
@@ -96,5 +117,6 @@ func main() {
 		e := getPage(i)
 		jobs = append(jobs, e...)
 	}
-	fmt.Println(jobs)
+	writeJobs(jobs)
+	fmt.Println("Done. Extraced", len(jobs))
 }
