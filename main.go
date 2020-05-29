@@ -8,24 +8,23 @@ import (
 
 var errRequestFailed = errors.New("Request failed")
 
-func hitURL(url string, c chan<- result) {
-	fmt.Println("Checking:", url)
+func hitURL(url string, c chan<- requestResult) {
 	status := "OK"
 	resp, err := http.Get(url)
 	if err != nil || resp.StatusCode >= 400 {
 		status = "FAILED"
 	}
-	c <- result{url: url, status: status}
+	c <- requestResult{url: url, status: status}
 }
 
-type result struct {
+type requestResult struct {
 	url    string
 	status string
 }
 
 func main() {
-	//var results = make(map[string]string)
-	var c = make(chan result)
+	var results = make(map[string]string)
+	var c = make(chan requestResult)
 	urls := []string{
 		"https://www.airbnb.com/",
 		"https://www.google.com/",
@@ -41,6 +40,10 @@ func main() {
 		go hitURL(url, c)
 	}
 	for i := 0; i < len(urls); i++ {
-		fmt.Println(<-c)
+		result := <-c
+		results[result.url] = result.status
+	}
+	for url, status := range results {
+		fmt.Println(url, status)
 	}
 }
