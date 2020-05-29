@@ -1,49 +1,100 @@
 package main
 
 import (
-	"errors"
-	"fmt"
+	"log"
 	"net/http"
+	"std/fmt"
+	"strconv"
+	"strings"
+
+	"github.com/PuerkitoBio/goquery"
 )
 
-var errRequestFailed = errors.New("Request failed")
-
-func hitURL(url string, c chan<- requestResult) {
-	status := "OK"
-	resp, err := http.Get(url)
-	if err != nil || resp.StatusCode >= 400 {
-		status = "FAILED"
-	}
-	c <- requestResult{url: url, status: status}
+type extractedJob struct {
+	id       string
+	location string
+	title    string
+	salary   string
+	summary  string
 }
 
-type requestResult struct {
-	url    string
-	status string
+var baseURL string = "https://kr.indeed.com/취업?q=python&limit=50"
+
+func checkErr(err error) {
+	if err != nil {
+		log.Fatalln(err)
+	}
+}
+
+func checkCode(res *http.Response) {
+	if res.StatusCode != 200 {
+		log.Fatalln("Request failed with Status: ", res.StatusCode)
+	}
+}
+
+func extractJob(card *goquery.Selection) extractedJob {
+	id, _ := card.Attr("data-jk")
+	title := cleanString(card.Find(".title>a").Text())
+	location := cleanString(card.Find(".sjcl").Text())
+	salary := cleanString(card.Find(".salaryText").Text())
+	summary := cleanString(card.Find(".summary").Text())
+	return extractedJob{
+		id:       id,
+		title:    title,
+		location: location,
+		salary:   salary,
+		summary:  summary}
+}
+
+func cleanString(str string) string {
+	return strings.Join(strings.Fields(strings.TrimSpace(str)), " ")
+}
+
+func getPage(page int) []extractedJob {
+	var jobs []extractedJob
+	pageURL := baseURL + "&start=" + strconv.Itoa(page*50)
+	res, err := http.Get(pageURL)
+	checkErr(err)
+	checkCode(res)
+
+	defer res.Body.Close()
+
+	doc, err := goquery.NewDocumentFromReader(res.Body)
+	checkErr(err)
+
+	searchCards := doc.Find(".jobsearch-SerpJobCard")
+	searchCards.Each(func(i int, card *goquery.Selection) {
+		job := extractJob(card)
+		jobs = append(jobs, job)
+	})
+	return jobs
+}
+
+func getPages() int {
+	pages := 0
+	res, err := http.Get(baseURL)
+	checkErr(err)
+	checkCode(res)
+
+	defer res.Body.Close()
+
+	doc, err := goquery.NewDocumentFromReader(res.Body)
+	checkErr(err)
+
+	doc.Find(".pagination").Each(func(i int, s *goquery.Selection) {
+		pages = s.Find("a").Length()
+	})
+
+	return pages
 }
 
 func main() {
-	var results = make(map[string]string)
-	var c = make(chan requestResult)
-	urls := []string{
-		"https://www.airbnb.com/",
-		"https://www.google.com/",
-		"https://www.amazon.com/",
-		"https://www.reddit.com/",
-		"https://www.google.com/",
-		"https://soundcloud.com/",
-		"https://www.facebook.com/",
-		"https://www.instagram.com/",
-		"https://academy.nomadcoders.co/",
+	var jobs []extractedJob
+	totalPages := getPages()
+
+	for i := 0; i < totalPages; i++ {
+		e := getPage(i)
+		jobs = append(jobs, e...)
 	}
-	for _, url := range urls {
-		go hitURL(url, c)
-	}
-	for i := 0; i < len(urls); i++ {
-		result := <-c
-		results[result.url] = result.status
-	}
-	for url, status := range results {
-		fmt.Println(url, status)
-	}
+	fmt.Println(jobs)
 }
